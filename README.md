@@ -1,4 +1,4 @@
-# amocrm
+# amoCRM API
 Простая обертка для работы с API AmoCRM.
 
 ## Что умеет
@@ -24,12 +24,12 @@
 ## Установка
 Добавьте в блок "require" в composer.json вашего проекта
 ```json
-"nabarabane/amocrm": "~1.0"
+"nabarabane/amocrm": "~1.1"
 ```
 
 Или введите в консоли
 ```sh
-composer require nabarabane/amocrm:~1.0
+composer require nabarabane/amocrm:"~1.1"
 ```
 
 ## Подготовка к работе и настройка
@@ -40,13 +40,11 @@ composer require nabarabane/amocrm:~1.0
 
 Файл с конфигом используется для хранения номеров кастомных полей из AmoCRM, которые вы будете использовать в своей работе, и должен возвращать ассоциативный массив, например:
 ```php
-<?php
-
 return [
 	'ResponsibleUserId' => 330242, //ID ответственного менеджера
 	'LeadStatusId' => 8156376, // ID первого статуса сделки
 	'ContactFieldPhone' => 1426544, // ID поля номера телефона
-	'ContactFieldEmail' => 1426546, // ID поля номера телефона
+	'ContactFieldEmail' => 1426546, // ID поля емейла
 	'LeadFieldCustom' => 1740351, // ID кастомного поля сделки
 	'LeadFieldCustomValue1' => 4055517, // ID первого значения кастомного поля сделки
 	'LeadFieldCustomValue2' => 4055519 // ID второго значения кастомного поля сделки
@@ -55,8 +53,6 @@ return [
 
 Номера полей вашего аккаунта можно получить так:
 ```php
-<?php
-
 use AmoCRM\Handler;
 use AmoCRM\Request;
 
@@ -77,8 +73,6 @@ print_r($api->request(new Request(Request::INFO))->result);
 ### Получение данных
 
 ```php
-<?php
-
 use \AmoCRM\Handler;
 use \AmoCRM\Request;
 
@@ -105,13 +99,10 @@ $result = $api->request($request)->result;
 $api->result == false, если ответ пустой (то есть контакты с таким телефоном не найдены) */
 ```
 
-
 ### Создание новых объектов
 Пример рабочего кода, который покрывает все доступные возможности библиотеки
 
 ```php
-<?php
-
 use \AmoCRM\Handler;
 use \AmoCRM\Request;
 use \AmoCRM\Lead;
@@ -146,13 +137,8 @@ try {
 			$api->config['LeadFieldCustom'], // ID поля
 			$api->config['LeadFieldCustomValue1'] // ID значения поля
 		)
-		/* Теги
-		Строка, если один тег,
-		массив - если несколько */
-		->setTags([
-			'тег 1',
-			'тег 2'
-		])
+		/* Теги. Строка - если один тег, массив - если несколько */
+		->setTags(['тег 1', 'тег 2'])
 		/* Статус сделки */
 		->setStatusId($api->config['LeadStatusId']);
 
@@ -162,7 +148,7 @@ try {
 	$api->request(new Request(Request::SET, $lead));
 
 	/* Сохраняем ID новой сделки для использования в дальнейшем */
-	$lead = $api->result->leads->add[0]->id;
+	$lead = $api->last_insert_id;
 
 
 	/* Создаем контакт */
@@ -184,7 +170,9 @@ try {
 			$api->config['ContactFieldEmail'],
 			$email, // Email
 			'WORK' // WORK - это ENUM для этого поля, список доступных значений смотрите в информации об аккаунте
-		); 
+		) 
+		/* Теги. Строка - если один тег, массив - если несколько */
+		->setTags(['тег контакта 1', 'тег контакта 2']);
 
 	/* Проверяем по емейлу, есть ли пользователь в нашей базе */
 	$api->request(new Request(Request::GET, ['query' => $email], ['contacts', 'list']));
@@ -227,7 +215,7 @@ try {
 		->setElementType(Task::TYPE_LEAD)
 		/* Тип задачи. Смотрите комментарии в Task.php */
 		->setTaskType(Task::CALL)
-		/* ID ответсвенного за задачу менеджера */
+		/* ID ответственного за задачу менеджера */
 		->setResponsibleUserId($api->config['ResponsibleUserId'])
 		/* Дедлайн задачи */
 		->setCompleteTill(time() + 60 * 2)
@@ -242,6 +230,37 @@ try {
 } catch (\Exception $e) {
 	echo $e->getMessage();
 }
+```
+
+### Мультизагрузка объектов
+Есть возможность создавать одновременно несколько объектов одного типа и отправлять их в amoCRM одним запросом
+
+```php
+use \AmoCRM\Handler;
+use \AmoCRM\Request;
+use \AmoCRM\Lead;
+
+require('autoload.php');
+
+try {
+	$api = new Handler('domain', 'user@example.com');
+
+	/* Первая сделка */
+	$lead1 = new Lead();
+	$lead1
+	    ->setName('Заявка 1') 
+		->setResponsibleUserId($api->config['ResponsibleUserId'])
+		->setStatusId($api->config['LeadStatusId']);
+	
+	/* Вторая сделка */
+	$lead2 = new Lead();
+	$lead2
+	    ->setName('Заявка 2') 
+		->setResponsibleUserId($api->config['ResponsibleUserId'])
+		->setStatusId($api->config['LeadStatusId']);
+
+	/* Отправляем данные в AmoCRM */
+	$api->request(new Request(Request::SET, [$lead1, $lead2]));
 ```
 
 ## Дебаггинг
@@ -280,8 +299,6 @@ $api = new Handler('domain', 'user@example.com', true);
 
 Обратите внимание, что при смене статуса сделки или при смене ответственного сделки, AmoCRM одновременно посылает информацию и об общем изменении сделки, то есть код для **leads-status** и **leads-responsible** всегда будет выполняться вместе с **leads-update.**
 ```php
-<?php
-
 use \AmoCRM\Webhook;
 
 require('autoload.php');
